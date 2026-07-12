@@ -28,9 +28,13 @@ export const RegimeBadge: React.FC<Props> = ({ response, eventNoun, testIdPrefix
   const styles = useStyles2((theme) => getStyles(theme, response.confidence_band));
   const band = response.confidence_band;
   const alert = response.semantic?.alert_level ?? null;
+  // In the transition band "No X detected" next to an orange TRANSITION
+  // chip reads as a mixed message — say what the band means instead.
   const verdict = response.change_detected
     ? `${capitalize(eventNoun)} detected`
-    : `No ${eventNoun} detected`;
+    : band === 'transition'
+      ? `Structure drifting — no ${eventNoun} yet`
+      : `No ${eventNoun} detected`;
 
   return (
     <div

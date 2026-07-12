@@ -29,9 +29,13 @@ export const InsightPanel: React.FC<Props> = ({ response, testIdPrefix }) => {
   const styles = useStyles2(getStyles);
   const semantic = response.semantic;
   const fingerprint = toFingerprintMetrics(response.metrics);
-  const interpretation: FingerprintInterpretation | null = fingerprint
-    ? interpretFingerprint(fingerprint, response.confidence_band)
-    : null;
+  // "What changed" only makes sense when something changed — on a stable
+  // verdict the attribution text ("a sharp transition is present…")
+  // contradicts the headline and confuses operators.
+  const interpretation: FingerprintInterpretation | null =
+    fingerprint && response.confidence_band !== 'stable'
+      ? interpretFingerprint(fingerprint, response.confidence_band)
+      : null;
 
   if (!semantic && !interpretation) {
     return null;
