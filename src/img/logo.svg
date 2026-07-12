@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- AlphaInfo Signal Monitor for Security Operations — dark navy badge,
+       silver ring, amber shield holding a calm telemetry waveform. -->
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F2F3F5"/>
+      <stop offset="0.45" stop-color="#9DA3AE"/>
+      <stop offset="0.75" stop-color="#E4E6EA"/>
+      <stop offset="1" stop-color="#7F8694"/>
+    </linearGradient>
+    <radialGradient id="bg" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#141C2B"/>
+      <stop offset="1" stop-color="#0B111C"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="256" cy="256" r="244" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="236" fill="none" stroke="url(#ring)" stroke-width="11"/>
+  <circle cx="256" cy="256" r="228" fill="none" stroke="#0A0F18" stroke-width="3" opacity="0.6"/>
+
+  <!-- shield outline -->
+  <path d="M256 122
+           C 296 146 330 154 362 158
+           L 362 280
+           C 362 342 322 380 256 402
+           C 190 380 150 342 150 280
+           L 150 158
+           C 182 154 216 146 256 122 Z"
+        fill="none" stroke="#FFB74D" stroke-width="14"
+        stroke-linejoin="round" filter="url(#glow)"/>
+  <!-- calm telemetry wave inside the shield -->
+  <path d="M186 268
+           q 17 -24 35 0 t 35 0 t 35 0 t 35 0"
+        fill="none" stroke="#FFB74D" stroke-width="11"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+</svg>

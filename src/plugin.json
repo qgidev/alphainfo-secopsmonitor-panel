@@ -1,0 +1,57 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "panel",
+  "name": "AlphaInfo Signal Monitor for Security Operations",
+  "id": "alphainfo-secopsmonitor-panel",
+  "info": {
+    "keywords": [
+      "panel",
+      "security-operations",
+      "soc",
+      "operational-technology",
+      "telemetry",
+      "alert-fatigue",
+      "anomaly-detection",
+      "noise-reduction",
+      "regime-change",
+      "time-series",
+      "monitoring",
+      "alphainfo"
+    ],
+    "description": "Defensive monitoring for security-operations telemetry — event volumes, authentication failure rates, network and OT metrics. Classifies signal structure as stable / transition / unstable and marks regime transitions as operational deviations, so teams triage structural change instead of threshold noise. Verdict badge, overlay, optional per-window deep timeline, live quota footer.",
+    "author": {
+      "name": "alphainfo.io",
+      "url": "https://alphainfo.io"
+    },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "Website",
+        "url": "https://alphainfo.io"
+      },
+      {
+        "name": "API Guide",
+        "url": "https://alphainfo.io/v1/guide"
+      },
+      {
+        "name": "Get a free API key",
+        "url": "https://alphainfo.io/register"
+      }
+    ],
+    "screenshots": [
+      {
+        "name": "Operational deviation detected in security-operations telemetry",
+        "path": "img/screenshot-operational-deviation.png"
+      }
+    ],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=12.3.0",
+    "plugins": []
+  }
+}

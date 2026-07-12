@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>alphainfo · 24h time-lapse · vs threshold detection</title>
+  <style>
+    /* Visual language matches the plugin (dark theme, semantic colors).
+       No Grafana CSS — this page is fully self-contained so it can be
+       embedded in any Grafana via iframe, opened standalone, or
+       dropped into a deck. */
+    :root {
+      --bg: #0d1015;
+      --panel: #161a23;
+      --panel-2: #1c2230;
+      --line: #2a3242;
+      --text: #e6e9ef;
+      --text-secondary: #9aa3b2;
+      --primary: #6d6cff;
+      --stable: #5fa861;
+      --transition: #e8a13a;
+      --unstable: #d05858;
+      --noise: #4a5670;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    h1 {
+      font-size: 19px;
+      font-weight: 600;
+      margin: 0 0 4px;
+    }
+    .subtitle {
+      color: var(--text-secondary);
+      margin: 0 0 18px;
+      max-width: 800px;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      margin-bottom: 18px;
+    }
+    .play-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      min-width: 110px;
+      justify-content: center;
+    }
+    .play-btn:hover { filter: brightness(1.1); }
+    .play-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .reset-btn {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    .reset-btn:hover { color: var(--text); border-color: var(--text-secondary); }
+    .timeline {
+      flex: 1;
+      height: 6px;
+      background: var(--panel-2);
+      border-radius: 3px;
+      position: relative;
+      cursor: pointer;
+    }
+    .timeline-progress {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      background: var(--primary);
+      border-radius: 3px;
+      transition: width 100ms linear;
+    }
+    .timeline-marker {
+      position: absolute;
+      top: -6px;
+      width: 2px;
+      height: 18px;
+      background: var(--text);
+      transform: translateX(-1px);
+      pointer-events: none;
+    }
+    .timeline-marker.threshold { background: var(--unstable); }
+    .timeline-marker.alphainfo { background: var(--primary); }
+    .timeline-marker .label {
+      position: absolute;
+      top: -22px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 2px;
+    }
+    .timeline-marker.threshold .label {
+      color: var(--unstable);
+      background: rgba(208, 88, 88, 0.15);
+    }
+    .timeline-marker.alphainfo .label {
+      color: var(--primary);
+      background: rgba(109, 108, 255, 0.18);
+    }
+    .clock {
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+      color: var(--text-secondary);
+      min-width: 110px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 16px;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
+      margin: 0 0 4px;
+    }
+    .panel-headline {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .panel-headline.fired { color: var(--unstable); }
+    .panel-headline.fired-alphainfo { color: var(--transition); }
+    .panel-headline.unstable { color: var(--unstable); }
+    .panel-meta {
+      color: var(--text-secondary);
+      margin: 4px 0 12px;
+      min-height: 18px;
+    }
+    .chart {
+      flex: 1;
+      width: 100%;
+      min-height: 200px;
+    }
+    .summary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 16px 24px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--primary);
+      border-radius: 6px;
+      font-size: 16px;
+      transition: opacity 200ms;
+    }
+    .summary.dim { opacity: 0.4; }
+    .summary .delta {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .legend {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: 4px; }
+    .legend-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>P99 latency · 24 h time-lapse</h1>
+    <p class="subtitle">
+      Synthetic latency series with a slow drift starting at hour 12 and a
+      step regression at hour 18. Same data, two detectors. Press Play to
+      watch them race.
+    </p>
+
+    <div class="controls">
+      <button id="play" class="play-btn">▶ Play</button>
+      <button id="reset" class="reset-btn" title="Reset playback">↺ Reset</button>
+      <div class="timeline" id="timeline">
+        <div class="timeline-progress" id="progress"></div>
+      </div>
+      <div class="clock" id="clock">00:00 / 24:00</div>
+    </div>
+
+    <div class="panels">
+      <div class="panel">
+        <p class="panel-title">Standard threshold (200 ms · 5 min)</p>
+        <p class="panel-headline" id="threshold-headline">Watching…</p>
+        <p class="panel-meta" id="threshold-meta">No alert yet.</p>
+        <svg class="chart" id="chart-threshold" viewBox="0 0 600 240" preserveAspectRatio="none"></svg>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-swatch" style="background: var(--noise)"></span>p99 latency</span>
+          <span class="legend-item"><span class="legend-swatch" style="background: var(--unstable)"></span>threshold (200 ms)</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p class="panel-title">alphainfo (structural confidence band)</p>
+        <p class="panel-headline" id="alphainfo-headline">Watching…</p>
+        <p class="panel-meta" id="alphainfo-meta">Stable.</p>
+        <svg class="chart" id="chart-alphainfo" viewBox="0 0 600 240" preserveAspectRatio="none"></svg>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-swatch" style="background: var(--noise)"></span>p99 latency</span>
+          <span class="legend-item"><span class="legend-swatch" style="background: var(--stable)"></span>stable</span>
+          <span class="legend-item"><span class="legend-swatch" style="background: var(--transition)"></span>transition</span>
+          <span class="legend-item"><span class="legend-swatch" style="background: var(--unstable)"></span>unstable</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary dim" id="summary">
+      <span>Press Play to compare detectors.</span>
+    </div>
+  </div>
+
+  <script>
+  // ---------------------------------------------------------------
+  // Data is loaded from timelapse_data.json (next to this file).
+  // The JSON is generated by build_timelapse_data.py — re-run it to
+  // refresh both the latency series and the alphainfo states.
+  // ---------------------------------------------------------------
+
+  const PLAYBACK_SECONDS = 60;     // play 24h in 1 minute
+  const FRAME_HZ = 30;             // visual smoothness
+  const VIEW_W = 600;
+  const VIEW_H = 240;
+  const PAD_L = 36, PAD_R = 8, PAD_T = 12, PAD_B = 22;
+  const PLOT_W = VIEW_W - PAD_L - PAD_R;
+  const PLOT_H = VIEW_H - PAD_T - PAD_B;
+  const THRESHOLD_MS = 200;
+
+  let DATA = null;        // populated after fetch
+  let raf = null;         // setInterval handle (kept the variable name for backwards compatibility with reset())
+  let playing = false;
+  let currentMinute = 0;  // 0..1440 — the playhead in simulated time
+  let lastTickAt = 0;     // perf timestamp of the last frame, for dt calc
+
+  const ns = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+
+  // ── Helpers ──────────────────────────────────────────────────
+
+  function formatHHMM(min) {
+    const h = Math.floor(min / 60);
+    const m = Math.floor(min % 60);
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  function alphainfoStateAt(minute) {
+    // Forward-fill: pick the latest sample whose at_minute <= minute.
+    // Returns null when we haven't reached the first sample yet
+    // (the warm-up window in the bridge).
+    const samples = DATA.alphainfo_samples;
+    let cur = null;
+    for (const s of samples) {
+      if (s.at_minute <= minute) cur = s;
+      else break;
+    }
+    return cur;
+  }
+
+  function bandColor(band) {
+    if (band === "stable") return "var(--stable)";
+    if (band === "transition") return "var(--transition)";
+    if (band === "unstable") return "var(--unstable)";
+    return "var(--noise)";
+  }
+
+  // ── Static SVG setup ─────────────────────────────────────────
+
+  function buildBackground(svgId) {
+    const svg = $(svgId);
+    svg.innerHTML = "";
+
+    // Y-axis grid + labels (50, 100, 150, 200, 250 ms)
+    for (const y of [50, 100, 150, 200, 250]) {
+      const yPx = PAD_T + PLOT_H * (1 - (y - 50) / 250);
+      const line = document.createElementNS(ns, "line");
+      line.setAttribute("x1", PAD_L);
+      line.setAttribute("y1", yPx);
+      line.setAttribute("x2", VIEW_W - PAD_R);
+      line.setAttribute("y2", yPx);
+      line.setAttribute("stroke", "var(--line)");
+      line.setAttribute("stroke-dasharray", "2 4");
+      svg.appendChild(line);
+
+      const label = document.createElementNS(ns, "text");
+      label.setAttribute("x", PAD_L - 4);
+      label.setAttribute("y", yPx + 3);
+      label.setAttribute("text-anchor", "end");
+      label.setAttribute("font-size", "10");
+      label.setAttribute("fill", "var(--text-secondary)");
+      label.textContent = `${y}`;
+      svg.appendChild(label);
+    }
+
+    // X-axis hour ticks
+    for (const h of [0, 6, 12, 18, 24]) {
+      const xPx = PAD_L + PLOT_W * (h / 24);
+      const tick = document.createElementNS(ns, "line");
+      tick.setAttribute("x1", xPx);
+      tick.setAttribute("y1", PAD_T + PLOT_H);
+      tick.setAttribute("x2", xPx);
+      tick.setAttribute("y2", PAD_T + PLOT_H + 3);
+      tick.setAttribute("stroke", "var(--text-secondary)");
+      svg.appendChild(tick);
+      const label = document.createElementNS(ns, "text");
+      label.setAttribute("x", xPx);
+      label.setAttribute("y", PAD_T + PLOT_H + 14);
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("font-size", "10");
+      label.setAttribute("fill", "var(--text-secondary)");
+      label.textContent = `${h}h`;
+      svg.appendChild(label);
+    }
+
+    // Threshold line (only on the threshold panel)
+    if (svgId === "chart-threshold") {
+      const yPx = PAD_T + PLOT_H * (1 - (THRESHOLD_MS - 50) / 250);
+      const line = document.createElementNS(ns, "line");
+      line.setAttribute("x1", PAD_L);
+      line.setAttribute("y1", yPx);
+      line.setAttribute("x2", VIEW_W - PAD_R);
+      line.setAttribute("y2", yPx);
+      line.setAttribute("stroke", "var(--unstable)");
+      line.setAttribute("stroke-width", "1");
+      line.setAttribute("stroke-dasharray", "4 3");
+      line.setAttribute("opacity", "0.7");
+      svg.appendChild(line);
+    }
+
+    // Foreground groups we'll repaint each frame
+    const fg = document.createElementNS(ns, "g");
+    fg.setAttribute("id", `${svgId}-fg`);
+    svg.appendChild(fg);
+  }
+
+  function clearForeground(svgId) {
+    const fg = $(`${svgId}-fg`);
+    if (fg) fg.innerHTML = "";
+  }
+
+  // ── Per-frame rendering ──────────────────────────────────────
+
+  function pathForLatency(uptoMinute) {
+    const series = DATA.latency_ms;
+    const lastIdx = Math.min(series.length, Math.max(0, Math.floor(uptoMinute)));
+    if (lastIdx < 2) return "";
+    const cmds = [];
+    for (let i = 0; i < lastIdx; i++) {
+      const x = PAD_L + PLOT_W * (i / (series.length - 1));
+      const y = PAD_T + PLOT_H * (1 - (series[i] - 50) / 250);
+      cmds.push(`${i === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`);
+    }
+    return cmds.join(" ");
+  }
+
+  function drawAlphainfoBands(uptoMinute) {
+    const fg = $("chart-alphainfo-fg");
+    const samples = DATA.alphainfo_samples;
+    let prevMin = 0;
+    let prevBand = "stable";
+    for (const s of samples) {
+      const startMin = prevMin;
+      const endMin = Math.min(s.at_minute, uptoMinute);
+      if (endMin > startMin) {
+        const x1 = PAD_L + PLOT_W * (startMin / 1440);
+        const x2 = PAD_L + PLOT_W * (endMin / 1440);
+        const rect = document.createElementNS(ns, "rect");
+        rect.setAttribute("x", x1);
+        rect.setAttribute("y", PAD_T);
+        rect.setAttribute("width", x2 - x1);
+        rect.setAttribute("height", PLOT_H);
+        rect.setAttribute("fill", bandColor(prevBand));
+        rect.setAttribute("opacity", "0.15");
+        fg.appendChild(rect);
+      }
+      if (s.at_minute > uptoMinute) break;
+      prevMin = s.at_minute;
+      prevBand = s.confidence_band || "stable";
+    }
+    // Tail: from the last recorded sample up to the playhead
+    if (prevMin < uptoMinute) {
+      const x1 = PAD_L + PLOT_W * (prevMin / 1440);
+      const x2 = PAD_L + PLOT_W * (uptoMinute / 1440);
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("x", x1);
+      rect.setAttribute("y", PAD_T);
+      rect.setAttribute("width", Math.max(1, x2 - x1));
+      rect.setAttribute("height", PLOT_H);
+      rect.setAttribute("fill", bandColor(prevBand));
+      rect.setAttribute("opacity", "0.15");
+      fg.appendChild(rect);
+    }
+  }
+
+  function drawThresholdAlertOverlay(uptoMinute) {
+    const fg = $("chart-threshold-fg");
+    const fired = DATA.threshold_first_fired_at_minute;
+    if (fired === null || fired === undefined) return;
+    if (uptoMinute < fired) return;
+    const x = PAD_L + PLOT_W * (fired / 1440);
+    const xEnd = PAD_L + PLOT_W * (uptoMinute / 1440);
+    const rect = document.createElementNS(ns, "rect");
+    rect.setAttribute("x", x);
+    rect.setAttribute("y", PAD_T);
+    rect.setAttribute("width", Math.max(1, xEnd - x));
+    rect.setAttribute("height", PLOT_H);
+    rect.setAttribute("fill", "var(--unstable)");
+    rect.setAttribute("opacity", "0.18");
+    fg.appendChild(rect);
+  }
+
+  function drawLatencyLine(svgId, uptoMinute, color) {
+    const fg = $(`${svgId}-fg`);
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", pathForLatency(uptoMinute));
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", "1.4");
+    path.setAttribute("stroke-linejoin", "round");
+    fg.appendChild(path);
+  }
+
+  function drawPlayhead(svgId, uptoMinute) {
+    const fg = $(`${svgId}-fg`);
+    const x = PAD_L + PLOT_W * Math.min(1, uptoMinute / 1440);
+    const line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", x);
+    line.setAttribute("y1", PAD_T);
+    line.setAttribute("x2", x);
+    line.setAttribute("y2", PAD_T + PLOT_H);
+    line.setAttribute("stroke", "var(--text)");
+    line.setAttribute("stroke-width", "0.8");
+    line.setAttribute("opacity", "0.6");
+    fg.appendChild(line);
+  }
+
+  function updatePanelText(uptoMinute) {
+    // Threshold side
+    const fired = DATA.threshold_first_fired_at_minute;
+    const tHead = $("threshold-headline");
+    const tMeta = $("threshold-meta");
+    if (fired !== null && uptoMinute >= fired) {
+      tHead.textContent = `🚨 ALERT FIRED · ${formatHHMM(fired)}`;
+      tHead.className = "panel-headline fired";
+      tMeta.textContent = `p99 stayed above ${THRESHOLD_MS} ms for 5 consecutive minutes — page sent.`;
+    } else {
+      const cur = DATA.latency_ms[Math.max(0, Math.floor(uptoMinute) - 1)] || DATA.latency_ms[0];
+      tHead.textContent = `Watching…`;
+      tHead.className = "panel-headline";
+      tMeta.textContent = `p99 = ${cur.toFixed(0)} ms · threshold = ${THRESHOLD_MS} ms`;
+    }
+
+    // alphainfo side
+    const state = alphainfoStateAt(uptoMinute);
+    const aHead = $("alphainfo-headline");
+    const aMeta = $("alphainfo-meta");
+    if (!state) {
+      aHead.textContent = "Warming up…";
+      aHead.className = "panel-headline";
+      aMeta.textContent = "Need 6h of data before the first analysis.";
+      return;
+    }
+    const band = state.confidence_band;
+    const score = (state.structural_score ?? 0).toFixed(3);
+    const sev = state.severity_score;
+    const firstAlert = DATA.alphainfo_first_alert_at_minute;
+    const headStartMin = firstAlert !== null && fired !== null ? fired - firstAlert : null;
+    if (band === "unstable") {
+      aHead.textContent = `🚨 UNSTABLE · ${formatHHMM(state.at_minute)}`;
+      aHead.className = "panel-headline unstable";
+    } else if (band === "transition") {
+      const prefix = firstAlert === state.at_minute || (firstAlert !== null && state.at_minute >= firstAlert)
+        ? "⚠ TRANSITION"
+        : "⚠ TRANSITION";
+      aHead.textContent = `${prefix} · ${formatHHMM(state.at_minute)}`;
+      aHead.className = "panel-headline fired-alphainfo";
+    } else {
+      aHead.textContent = "Stable";
+      aHead.className = "panel-headline";
+    }
+    const sevStr = typeof sev === "number" ? `severity ${sev.toFixed(1)} / 100` : "";
+    aMeta.textContent = `structural_score = ${score} · band = ${band}${sevStr ? " · " + sevStr : ""}`;
+  }
+
+  function updateSummary(uptoMinute) {
+    const summary = $("summary");
+    const firstAlert = DATA.alphainfo_first_alert_at_minute;
+    const fired = DATA.threshold_first_fired_at_minute;
+    if (firstAlert === null || fired === null) {
+      summary.classList.add("dim");
+      summary.innerHTML = "<span>Demo did not produce both detection moments — re-generate data.</span>";
+      return;
+    }
+    const showAlphainfoFired = uptoMinute >= firstAlert;
+    const showThresholdFired = uptoMinute >= fired;
+    if (!showAlphainfoFired && !showThresholdFired) {
+      summary.classList.add("dim");
+      summary.innerHTML = "<span>Press Play to compare detectors.</span>";
+    } else if (showAlphainfoFired && !showThresholdFired) {
+      const elapsedMin = Math.floor(uptoMinute - firstAlert);
+      summary.classList.remove("dim");
+      summary.innerHTML = `
+        <span>alphainfo flagged the regime at <b>${formatHHMM(firstAlert)}</b>.</span>
+        <span class="delta">${formatHHMM(elapsedMin)}</span>
+        <span>head start vs threshold (still silent).</span>`;
+    } else {
+      const headStart = fired - firstAlert;
+      summary.classList.remove("dim");
+      summary.innerHTML = `
+        <span>alphainfo flagged at <b>${formatHHMM(firstAlert)}</b> · threshold fired at <b>${formatHHMM(fired)}</b>.</span>
+        <span class="delta">${formatHHMM(headStart)}</span>
+        <span>of advance warning.</span>`;
+    }
+  }
+
+  // Markers on the master timeline showing where each detector first fired
+  function placeTimelineMarkers() {
+    const timeline = $("timeline");
+    timeline.querySelectorAll(".timeline-marker").forEach((el) => el.remove());
+    const fired = DATA.threshold_first_fired_at_minute;
+    const alphainfo = DATA.alphainfo_first_alert_at_minute;
+    if (fired !== null) {
+      const m = document.createElement("div");
+      m.className = "timeline-marker threshold";
+      m.style.left = `${(fired / 1440) * 100}%`;
+      m.innerHTML = `<span class="label">threshold ${formatHHMM(fired)}</span>`;
+      timeline.appendChild(m);
+    }
+    if (alphainfo !== null) {
+      const m = document.createElement("div");
+      m.className = "timeline-marker alphainfo";
+      m.style.left = `${(alphainfo / 1440) * 100}%`;
+      m.innerHTML = `<span class="label">alphainfo ${formatHHMM(alphainfo)}</span>`;
+      timeline.appendChild(m);
+    }
+  }
+
+  function render() {
+    const upto = currentMinute;
+    clearForeground("chart-threshold");
+    clearForeground("chart-alphainfo");
+    drawThresholdAlertOverlay(upto);
+    drawAlphainfoBands(upto);
+    drawLatencyLine("chart-threshold", upto, "var(--noise)");
+    drawLatencyLine("chart-alphainfo", upto, "var(--noise)");
+    drawPlayhead("chart-threshold", upto);
+    drawPlayhead("chart-alphainfo", upto);
+    updatePanelText(upto);
+    updateSummary(upto);
+    $("progress").style.width = `${(upto / 1440) * 100}%`;
+    $("clock").textContent = `${formatHHMM(upto)} / 24:00`;
+  }
+
+  // ── Playback loop ────────────────────────────────────────────
+
+  const MINUTES_PER_SECOND = 1440 / PLAYBACK_SECONDS; // 24
+  const FRAME_MS = 1000 / FRAME_HZ;                   // ~33 ms
+
+  // Use setInterval rather than requestAnimationFrame because
+  // Chrome aggressively throttles rAF in background / inactive
+  // tabs (down to 1 Hz), which froze the playback whenever the
+  // demo lost focus. setInterval keeps a more predictable cadence
+  // for inactive tabs, and the `dt` math below uses real wall
+  // time so any further throttling still produces the correct
+  // playback speed when the tab regains focus.
+  function tick() {
+    if (!playing) return;
+    const now = performance.now();
+    if (lastTickAt === 0) lastTickAt = now;
+    const dt = (now - lastTickAt) / 1000;
+    lastTickAt = now;
+    currentMinute += dt * MINUTES_PER_SECOND;
+    if (currentMinute >= 1440) {
+      currentMinute = 1440;
+      stopTicker();
+      playing = false;
+      $("play").innerHTML = "↻ Play again";
+    }
+    render();
+  }
+
+  function startTicker() {
+    if (raf) clearInterval(raf);
+    raf = setInterval(tick, FRAME_MS);
+  }
+
+  function stopTicker() {
+    if (raf) clearInterval(raf);
+    raf = null;
+  }
+
+  function play() {
+    if (currentMinute >= 1440) currentMinute = 0;
+    playing = true;
+    lastTickAt = 0;
+    $("play").innerHTML = "⏸ Pause";
+    startTicker();
+  }
+
+  function pause() {
+    playing = false;
+    stopTicker();
+    $("play").innerHTML = "▶ Resume";
+  }
+
+  function reset() {
+    pause();
+    currentMinute = 0;
+    $("play").innerHTML = "▶ Play";
+    render();
+  }
+
+  $("play").addEventListener("click", () => {
+    if (playing) pause();
+    else play();
+  });
+  $("reset").addEventListener("click", reset);
+
+  // Click on the timeline to scrub
+  $("timeline").addEventListener("click", (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    pause();
+    currentMinute = Math.max(0, Math.min(1440, ratio * 1440));
+    render();
+  });
+
+  // ── Boot ─────────────────────────────────────────────────────
+
+  // Hysteresis filter: require K consecutive raw samples of the same
+  // band before flipping the *displayed* band. This kills single-tick
+  // flaps that come out of the API near band boundaries — the kind of
+  // thing that makes the playback flicker yellow→green→yellow during
+  // the healthy early-morning hours and reads as noise to a viewer.
+  // The first alert minute is recomputed off the smoothed series so
+  // the headline matches what the user actually sees on screen.
+  function applyBandHysteresis(samples, k = 2) {
+    let displayed = "stable";
+    let runBand = null;
+    let runLen = 0;
+    for (const s of samples) {
+      const raw = s.confidence_band || "stable";
+      s.raw_confidence_band = raw;
+      if (raw === runBand) {
+        runLen += 1;
+      } else {
+        runBand = raw;
+        runLen = 1;
+      }
+      if (runLen >= k) displayed = runBand;
+      s.confidence_band = displayed;
+    }
+    let firstAlert = null;
+    for (const s of samples) {
+      if (s.confidence_band === "transition" || s.confidence_band === "unstable") {
+        firstAlert = s.at_minute;
+        break;
+      }
+    }
+    return firstAlert;
+  }
+
+  fetch("./timelapse_data.json")
+    .then((r) => {
+      if (!r.ok) throw new Error(`failed to load timelapse_data.json (HTTP ${r.status})`);
+      return r.json();
+    })
+    .then((data) => {
+      DATA = data;
+      const smoothedFirstAlert = applyBandHysteresis(DATA.alphainfo_samples, 3);
+      DATA.alphainfo_first_alert_at_minute = smoothedFirstAlert;
+      buildBackground("chart-threshold");
+      buildBackground("chart-alphainfo");
+      placeTimelineMarkers();
+      render();
+    })
+    .catch((err) => {
+      document.body.innerHTML = `
+        <div style="padding: 40px; max-width: 720px; margin: 80px auto; background: #1c2230; border-radius: 8px; border-left: 4px solid #d05858;">
+          <h2 style="margin: 0 0 12px; color: #e6e9ef;">Couldn't load demo data</h2>
+          <p style="color: #9aa3b2;">
+            <code>timelapse_data.json</code> not found next to this page.<br>
+            Generate it with <code>python3 build_timelapse_data.py</code> in this directory,
+            then refresh.
+          </p>
+          <p style="color: #d05858; font-family: monospace; font-size: 12px;">${err.message}</p>
+        </div>`;
+    });
+  </script>
+</body>
+</html>
