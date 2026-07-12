@@ -5,7 +5,7 @@ import { PanelDataErrorView } from '@grafana/runtime';
 import { Button, LoadingPlaceholder, useStyles2 } from '@grafana/ui';
 import type { CoreAnalysisOptions } from './analysisOptions';
 import type { PluginBranding } from './branding';
-import { useAlphaInfoAnalysis, type IdleReason } from './useAnalysis';
+import { useAlphaInfoAnalysis, type IdleDetail, type IdleReason } from './useAnalysis';
 import { useDeepTimeline } from './useDeepTimeline';
 import { toFingerprintMetrics } from './fingerprint';
 import { AuditLink } from './components/AuditLink';
@@ -115,7 +115,7 @@ export function createPanel(branding: PluginBranding): React.FC<PanelProps<CoreA
           </div>
         );
       }
-      const copy = buildIdleCopy(options.baseUrl)[state.reason];
+      const copy = buildIdleCopy(options.baseUrl, state.detail)[state.reason];
       return (
         <div className={styles.root}>
           <div
@@ -283,8 +283,13 @@ interface IdleCopy {
   detail: React.ReactNode;
 }
 
-function buildIdleCopy(baseUrl: string): Record<IdleReason, IdleCopy> {
+/** Samples per window at which verdicts are reliable (~400 per split side). */
+const RELIABLE_SAMPLES = 800;
+
+function buildIdleCopy(baseUrl: string, detail?: IdleDetail): Record<IdleReason, IdleCopy> {
   const keysUrl = `${baseUrl.replace(/\/$/, '')}/dashboard/api-keys`;
+  const widenFactor =
+    detail && detail.samples > 0 ? Math.max(2, Math.ceil(RELIABLE_SAMPLES / detail.samples)) : null;
   return {
     'no-api-key': {
       title: 'Configure your alphainfo API key',
@@ -322,8 +327,13 @@ function buildIdleCopy(baseUrl: string): Record<IdleReason, IdleCopy> {
     },
     'series-too-short': {
       title: 'Series is too short to analyze',
-      detail:
-        'alphainfo needs at least 10 finite samples. 200+ are recommended for stable classification.',
+      detail: detail
+        ? `The current query returned ${detail.samples} ${
+            detail.samples === 1 ? 'sample' : 'samples'
+          } — the engine minimum is ${detail.minimum}, and ~${RELIABLE_SAMPLES} give reliable verdicts.${
+            widenFactor ? ` Try widening the time range about ${widenFactor}×.` : ' Widen the time range.'
+          }`
+        : 'alphainfo needs at least 10 finite samples. 200+ are recommended for stable classification.',
     },
     'gap-too-large': {
       title: 'Series has too many gaps',
@@ -332,8 +342,11 @@ function buildIdleCopy(baseUrl: string): Record<IdleReason, IdleCopy> {
     },
     'baseline-window-too-short': {
       title: 'Time range too short for baseline comparison',
-      detail:
-        'The split would leave one half below the engine minimum (10 samples). Widen the time range or turn baseline comparison off.',
+      detail: detail
+        ? `The window has ${detail.samples} usable samples; splitting it needs at least ${detail.minimum} (10 per side), and ~${RELIABLE_SAMPLES} give reliable verdicts.${
+            widenFactor ? ` Try widening the time range about ${widenFactor}×,` : ' Widen the time range,'
+          } or turn baseline comparison off.`
+        : 'The split would leave one half below the engine minimum (10 samples). Widen the time range or turn baseline comparison off.',
     },
     'awaiting-start': {
       title: 'Ready to analyze',

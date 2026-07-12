@@ -164,8 +164,9 @@ export const FingerprintRadar: React.FC<Props> = ({
         {geometry.map((g) => (
           <circle key={`v-${g.key}`} className={styles.vertex} cx={g.pointX} cy={g.pointY} r={3} />
         ))}
-        {geometry.map((g) => (
+        {geometry.map((g, i) => (
           <text key={`l-${g.key}`} className={styles.axisLabel} x={g.labelX} y={g.labelY}>
+            <title>{AXES[i].tooltip}</title>
             {g.label}
           </text>
         ))}

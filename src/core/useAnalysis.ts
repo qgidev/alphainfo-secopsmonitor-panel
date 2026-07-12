@@ -47,8 +47,17 @@ export interface BaselineOutcome {
 /** What the delivered verdict was measured against (see CoreAnalysisOptions.referenceMode). */
 export type ReferenceUsed = 'window-start' | 'internal';
 
+/**
+ * Concrete numbers behind a size-related idle reason, so the UI can say
+ * "you have 47 samples, the minimum is 10" instead of a generic sentence.
+ */
+export interface IdleDetail {
+  samples: number;
+  minimum: number;
+}
+
 export type AnalysisState =
-  | { status: 'idle'; reason: IdleReason }
+  | { status: 'idle'; reason: IdleReason; detail?: IdleDetail }
   | { status: 'loading'; extracted: ExtractedSeries }
   | { status: 'error'; error: Error; extracted: ExtractedSeries; retryAfter: number | null }
   | {
@@ -77,7 +86,7 @@ export interface UseAnalysisResult {
 }
 
 type Action =
-  | { type: 'idle'; reason: IdleReason }
+  | { type: 'idle'; reason: IdleReason; detail?: IdleDetail }
   | { type: 'loading'; extracted: ExtractedSeries }
   | { type: 'error'; error: Error; extracted: ExtractedSeries; retryAfter: number | null }
   | {
@@ -94,7 +103,7 @@ type Action =
 function reducer(_: AnalysisState, action: Action): AnalysisState {
   switch (action.type) {
     case 'idle':
-      return { status: 'idle', reason: action.reason };
+      return { status: 'idle', reason: action.reason, detail: action.detail };
     case 'loading':
       return { status: 'loading', extracted: action.extracted };
     case 'error':
@@ -235,6 +244,7 @@ export function useAlphaInfoAnalysis(input: UseAnalysisInput): UseAnalysisResult
       dispatch({
         type: 'idle',
         reason: rawLen < 10 ? 'series-too-short' : 'gap-too-large',
+        detail: rawLen < 10 ? { samples: rawLen, minimum: 10 } : undefined,
       });
       return;
     }
@@ -252,7 +262,11 @@ export function useAlphaInfoAnalysis(input: UseAnalysisInput): UseAnalysisResult
       ? splitExtractedByFraction(extracted, options.baselineFraction)
       : null;
     if (baselineOn && !split) {
-      dispatch({ type: 'idle', reason: 'baseline-window-too-short' });
+      dispatch({
+        type: 'idle',
+        reason: 'baseline-window-too-short',
+        detail: { samples: extracted.values.length, minimum: 20 },
+      });
       return;
     }
 
