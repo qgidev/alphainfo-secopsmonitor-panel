@@ -120,6 +120,10 @@ export interface AnalyzeResponse {
   domain_applied?: string;
   /** Present when `domain='auto'` — server's confidence and reason. */
   domain_inference?: DomainInference;
+  /** Server-side dead-feed advisory: true when the signal looks flat or its
+   *  amplitude collapsed vs the baseline, i.e. a "stable" verdict that must
+   *  not reassure anyone. Advisory only — score/fingerprint untouched. */
+  liveness_alert?: boolean;
 }
 
 export interface HealthResponse {

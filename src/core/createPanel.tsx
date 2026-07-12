@@ -171,6 +171,15 @@ export function createPanel(branding: PluginBranding): React.FC<PanelProps<CoreA
 
     // Success
     const { response, extracted } = state;
+    // A dead feed (stuck sensor, constant series) is structurally identical
+    // to its own start and reads STABLE with a perfect score — the one case
+    // where a green badge must not reassure the operator. Two detectors:
+    // the local constant check (works against any API version) and the
+    // server-side liveness advisory, which also catches collapsed amplitude.
+    const isFlat =
+      (extracted.values.length > 1 &&
+        extracted.values.every((v) => v === extracted.values[0])) ||
+      response.liveness_alert === true;
     const deepRateLimit = deep.status === 'success' ? deep.rateLimit : null;
     const fingerprint = options.showFingerprint ? toFingerprintMetrics(response.metrics) : null;
     const sidebar = sidebarOn ? (
@@ -231,6 +240,12 @@ export function createPanel(branding: PluginBranding): React.FC<PanelProps<CoreA
               />
               {options.showOverlay && <RegimeOverlay band={response.confidence_band} />}
             </div>
+            {isFlat && (
+              <span className={styles.flatWarning} data-testid={`${branding.testIdPrefix}-flat-warning`}>
+                ⚠ The feed looks dead — flat series or collapsed amplitude reads as
+                stable. Verify the data source before trusting the verdict.
+              </span>
+            )}
             {options.deepMode && (
               <div className={styles.deepRow}>
                 {deep.status === 'success' && (
@@ -446,6 +461,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
   deepNote: css({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
+  }),
+  flatWarning: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.warning.text,
   }),
   centered: css({
     flex: '1 1 auto',
