@@ -39,6 +39,10 @@
       {
         "name": "Get a free API key",
         "url": "https://alphainfo.io/register"
+      },
+      {
+        "name": "sponsor",
+        "url": "https://alphainfo.io/pricing"
       }
     ],
     "screenshots": [
