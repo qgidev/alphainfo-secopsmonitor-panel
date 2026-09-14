@@ -88,7 +88,9 @@ export const CORE_DEFAULT_OPTIONS: CoreAnalysisOptions = {
   domain: 'auto',
   samplingRate: 0,
   maxSignalSamples: 9_500,
-  useMultiscale: false,
+  // true since 1.0.1: same default as the alphainfo API 2.4.0, SDK and playground.
+  // Set false for fast mode (skips the multiscale pass).
+  useMultiscale: true,
   includeSemantic: true,
   refreshOnQuery: false,
   runOnDemand: true,

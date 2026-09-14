@@ -1,7 +1,10 @@
 # Changelog
 
-## 1.0.1 (Unreleased)
+## 1.0.1 — 2026-09-14
 
+- Multiscale analysis is now ON by default (`useMultiscale: true`), matching the
+  alphainfo API 2.4.0, SDK and playground defaults. Turn it off in Analysis →
+  Multiscale for fast mode. Existing dashboards keep their saved value.
 - Fingerprint radar: the D1–D5 axis labels on the diagram now carry the same
   explanatory tooltips as the value table (hover any axis).
 - Short-window messages now show concrete numbers: how many samples the query
