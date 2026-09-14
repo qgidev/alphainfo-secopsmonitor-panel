@@ -2,6 +2,9 @@
 
 ## 1.0.1 — 2026-09-14
 
+- Dependency overrides for the high/critical advisories flagged by npm audit
+  (websocket-driver, brace-expansion, browserslist, fast-uri, js-yaml, nanoid,
+  postcss, immutable, js-cookie, protobufjs): 0 high / 0 critical after this change.
 - Multiscale analysis is now ON by default (`useMultiscale: true`), matching the
   alphainfo API 2.4.0, SDK and playground defaults. Turn it off in Analysis →
   Multiscale for fast mode. Existing dashboards keep their saved value.
